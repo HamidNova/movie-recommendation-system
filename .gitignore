@@ -15,6 +15,14 @@ data/
 models/
 logs/
 
+# Generated reports (keep directory structure)
+reports/*
+!reports/figures/
+!reports/figures/.gitkeep
+
+# Temporary pictures
+pictures/
+
 # IDE
 .idea/
 .vscode/
