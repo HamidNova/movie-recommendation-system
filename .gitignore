@@ -10,13 +10,13 @@ venv/
 dist/
 build/
 
-# Data & Models (حجیم و قابل بازتولید)
+# Data & Models
 data/
 models/
 logs/
 
 # Generated reports (keep directory structure)
-reports/*
+reports/
 !reports/figures/
 !reports/figures/.gitkeep
 
