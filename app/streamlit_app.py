@@ -1,7 +1,7 @@
-# app/streamlit_app.py
 import streamlit as st
 import sys
 import os
+import base64
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -14,9 +14,8 @@ import config
 import pandas as pd
 import numpy as np
 
-st.set_page_config(page_title="🎬 Movie Recommender Pro", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Movie Recommender Pro", layout="wide", initial_sidebar_state="expanded")
 
-# ---------- Custom CSS for cards and styling ----------
 st.markdown("""
 <style>
 .movie-card {
@@ -59,25 +58,41 @@ st.markdown("""
 .search-box {
     margin-bottom: 20px;
 }
+.header-icon {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
+}
+.header-icon img {
+    width: 28px;
+    height: 28px;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- Sidebar ----------
+
+def img_to_base64(path):
+    """Convert image file to base64 string."""
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+
 with st.sidebar:
-    st.image("pictures\movie-projector.png", width=80)
+    st.image("pictures/movie-projector.png", width=80)
     st.title("Movie Recommender Pro")
     st.markdown("---")
-    st.markdown("**📌 Dataset:** MovieLens 100K")
-    st.markdown("**👥 Users:** 943")
-    st.markdown("**🎞 Movies:** 1682")
+    st.markdown("**Dataset:** MovieLens 100K")
+    st.markdown("**Users:** 943")
+    st.markdown("**Movies:** 1682")
     st.markdown("---")
-    st.caption("© 2026 Final Year Project · Computer Engineering")
-    if st.button("✨ Clear history"):
+    st.caption("2026 Final Year Project - Computer Engineering")
+    if st.button("Clear history"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.success("Session cleared!")
 
-# ---------- Data loading (cached) ----------
+
 @st.cache_resource
 def load_everything():
     df_ratings, df_movies = load_movielens()
@@ -90,14 +105,24 @@ def load_everything():
     hybrid = HybridRecommender(content_model, collab_model, df_ratings, df_movies)
     return df_ratings, df_movies, hybrid, content_model, collab_model
 
+
 df_ratings, df_movies, hybrid, content_model, collab_model = load_everything()
 
-# ---------- Tabs ----------
-tab1, tab2, tab3 = st.tabs(["🔍 Similar Movies", "👤 Personalized For You", "📊 About"])
 
-# ---------- Tab 1: Similar Movies ----------
+def icon_header(icon_file, text):
+    b64 = img_to_base64(icon_file)
+    st.markdown(f"""
+    <div class="header-icon">
+        <img src="data:image/png;base64,{b64}" alt="icon">
+        <h2 style="margin:0; padding:0;">{text}</h2>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+tab1, tab2, tab3 = st.tabs(["Similar Movies", "Personalized For You", "About"])
+
 with tab1:
-    st.header("Find Movies Similar to Your Favorite")
+    icon_header("pictures/icons/search_icon.png", "Find Movies Similar to Your Favorite")
     st.markdown("Type a movie name or select from suggestions to get similar films.")
 
     col1, col2 = st.columns([2, 1])
@@ -128,17 +153,16 @@ with tab1:
         n_sim = st.slider("Number of results:", 3, 10, 5, key="n_sim")
         content_weight_sim = st.slider("Content vs Collab weight (0=collab, 1=content):", 0.0, 1.0, 0.6, key="cw_sim")
 
-    if st.button("🚀 Find Similar Movies", type="primary", disabled=(selected_movie_id is None)):
+    if st.button("Find Similar Movies", type="primary", disabled=(selected_movie_id is None)):
         with st.spinner("Finding similar movies..."):
             similar = hybrid.recommend_similar_movies(selected_movie_id, n=n_sim, content_weight=content_weight_sim)
 
         if similar:
             st.success(f"Top {n_sim} similar to **{selected_title}**:")
-            for i, m in enumerate(similar, 1):
-                # Card layout
+            for m in similar:
                 st.markdown(f"""
                 <div class="movie-card">
-                    <div class="movie-title">🎬 {m['title']}</div>
+                    <div class="movie-title">{m['title']}</div>
                     <div class="movie-score">Confidence: {m['confidence']:.3f}</div>
                     <div class="confidence-bar">
                         <div class="confidence-fill" style="width: {m['confidence']*100:.0f}%;"></div>
@@ -151,9 +175,8 @@ with tab1:
         else:
             st.warning("No similar movies found. Try different weight.")
 
-# ---------- Tab 2: Personalized Recommendations ----------
 with tab2:
-    st.header("Get Personalized Recommendations")
+    icon_header("pictures/icons/user_icon.png", "Get Personalized Recommendations")
     st.markdown("Tell us your user ID and a movie you like to get hybrid suggestions.")
 
     col1, col2, col3 = st.columns([1, 1.5, 1])
@@ -186,15 +209,14 @@ with tab2:
         n_recs = st.slider("Number of recommendations:", 3, 10, 5, key="n_rec")
         content_weight_rec = st.slider("Content weight (0=collab, 1=content):", 0.0, 1.0, 0.4, key="cw_rec")
 
-    if st.button("🔥 Get Recommendations", type="primary", disabled=(selected_movie_id_user is None)):
-        # Cold-start check
+    if st.button("Get Recommendations", type="primary", disabled=(selected_movie_id_user is None)):
         cold_recs = handle_cold_start(user_id, df_ratings, df_movies, n=n_recs)
         if cold_recs:
-            st.subheader("📌 New user! Enjoy these popular movies:")
-            for i, title in enumerate(cold_recs, 1):
+            st.subheader("New user! Enjoy these popular movies:")
+            for title in cold_recs:
                 st.markdown(f"""
                 <div class="movie-card">
-                    <div class="movie-title">🎬 {title}</div>
+                    <div class="movie-title">{title}</div>
                     <div class="movie-score">(popular pick)</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -203,15 +225,14 @@ with tab2:
                 recs = hybrid.recommend_by_movie_id(user_id, selected_movie_id_user, n=n_recs,
                                                     content_weight=content_weight_rec)
             if recs:
-                st.subheader(f"🎯 Top picks for User #{user_id}")
-                # Save to session state for feedback
+                st.subheader(f"Top picks for User #{user_id}")
                 st.session_state['last_recs'] = recs
                 st.session_state['last_user'] = user_id
 
-                for i, r in enumerate(recs, 1):
+                for r in recs:
                     st.markdown(f"""
                     <div class="movie-card">
-                        <div class="movie-title">🎬 {r['title']}</div>
+                        <div class="movie-title">{r['title']}</div>
                         <div class="movie-score">Confidence: {r['confidence']:.3f}</div>
                         <div class="confidence-bar">
                             <div class="confidence-fill" style="width: {r['confidence']*100:.0f}%;"></div>
@@ -222,13 +243,12 @@ with tab2:
                     </div>
                     """, unsafe_allow_html=True)
 
-                # Feedback buttons (cosmetic, logged in session)
                 st.markdown("**How was this recommendation?**")
                 col_fb1, col_fb2, _ = st.columns([1, 1, 4])
-                if col_fb1.button("👍 Like", key="like"):
+                if col_fb1.button("Like", key="like"):
                     st.session_state['feedback'] = 'liked'
                     st.success("Thanks! We'll keep that in mind.")
-                if col_fb2.button("👎 Dislike", key="dislike"):
+                if col_fb2.button("Dislike", key="dislike"):
                     st.session_state['feedback'] = 'disliked'
                     st.info("Thanks for your feedback.")
                 if 'feedback' in st.session_state:
@@ -236,32 +256,31 @@ with tab2:
             else:
                 st.warning("Could not generate recommendations. Try a different movie or user ID.")
 
-# ---------- Tab 3: About ----------
 with tab3:
-    st.header("About the Project")
+    icon_header("pictures/icons/info_icon.png", "About the Project")
     st.markdown("""
-    **🎓 Advanced Hybrid Movie Recommender System**  
-    *Final Year B.Sc. Project – Computer Engineering*
+    **Advanced Hybrid Movie Recommender System**  
+    *Final Year B.Sc. Project - Computer Engineering*
 
     ---
-    ### 🔬 Features
-    - **Content-Based:** Uses movie genres (19 categories) and title text (TF‑IDF similarity)
+    ### Features
+    - **Content-Based:** Uses movie genres (19 categories) and title text (TF-IDF similarity)
     - **Collaborative Filtering:** ALS (Alternating Least Squares) with confidence weighting
     - **Hybrid Engine:** Adjustable combination of both methods with explainable reasons
     - **Cold-Start Handling:** Bayesian average for new users
     - **Evaluation Metrics:** Precision@k, Recall@k, NDCG, Coverage, Novelty, Diversity
     - **Visual Analytics:** 5 exploratory plots and model comparison chart
 
-    ### 📁 Dataset
-    MovieLens 100K – 100,000 ratings (1-5) from 943 users on 1,682 movies.
+    ### Dataset
+    MovieLens 100K - 100,000 ratings (1-5) from 943 users on 1,682 movies.
 
-    ### 🛠 Tech Stack
+    ### Tech Stack
     Python, Streamlit, scikit-learn, Implicit (ALS), Pandas, NumPy, Matplotlib, Seaborn
 
-    ### 📂 Project Structure
+    ### Project Structure
     Modular design with separate modules for data loading, modeling, evaluation, visualization, and UI.
     """)
     st.image("reports/figures/rating_distribution.png", caption="Rating Distribution", use_container_width=True)
 
 st.markdown("---")
-st.caption("🚀 Built with Streamlit · © 2026 Computer Engineering Final Project")
+st.caption("Built with Streamlit - 2026 Computer Engineering Final Project")
