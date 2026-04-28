@@ -1,4 +1,3 @@
-# src/evaluation.py
 import numpy as np
 import pandas as pd
 from collections import defaultdict
@@ -12,18 +11,15 @@ def ndcg_at_k(predictions_dict, user_all_test_ratings, k=5, threshold=3.5):
     """
     NDCG@k (Normalized Discounted Cumulative Gain)
     predictions_dict: {user_id: [(movie_id, predicted_score, actual_rating), ...]}
-    user_all_test_ratings: {user_id: {movie_id: actual_rating}}  (همه‌ی آیتم‌های تست کاربر)
+    user_all_test_ratings: {user_id: {movie_id: actual_rating}}
     """
     ndcg_scores = []
     for user_id, user_preds in predictions_dict.items():
-        # مرتب‌سازی پیش‌بینی‌ها به صورت نزولی
         top_k = sorted(user_preds, key=lambda x: x[1], reverse=True)[:k]
         relevance_top_k = [1 if actual >= threshold else 0 for (_, _, actual) in top_k]
 
-        # DCG
         dcg = sum(rel / np.log2(i + 2) for i, rel in enumerate(relevance_top_k))
 
-        # IDCG: از کل relevanceهای واقعی در مجموعه‌ی تست کاربر
         test_ratings = user_all_test_ratings.get(user_id, {})
         all_relevances = [1 if r >= threshold else 0 for r in test_ratings.values()]
         ideal_sorted = sorted(all_relevances, reverse=True)[:k]
@@ -36,8 +32,8 @@ def ndcg_at_k(predictions_dict, user_all_test_ratings, k=5, threshold=3.5):
 
 def novelty_at_k(predictions_dict, item_popularity, k=5):
     """
-    Novelty@k: میانگین لگاریتم معکوس محبوبیت آیتم‌های توصیه شده
-    item_popularity: دیکشنری {movie_id: تعداد ریتینگ}
+    Novelty@k: mean log inverse popularity of recommended items.
+    item_popularity: dict {movie_id: number of ratings}
     """
     novelty_scores = []
     total_pop = sum(item_popularity.values())
@@ -53,8 +49,8 @@ def novelty_at_k(predictions_dict, item_popularity, k=5):
 
 def diversity_at_k(predictions_dict, item_similarity_matrix, k=5):
     """
-    Diversity@k: 1 - میانگین تشابه بین همه جفت آیتم‌های توصیه شده
-    item_similarity_matrix: دیکشنری {movie_id: {movie_id: similarity}}
+    Diversity@k: 1 - average similarity among recommended items.
+    item_similarity_matrix: dict {movie_id: {movie_id: similarity}}
     """
     if item_similarity_matrix is None:
         return 0.0
@@ -103,14 +99,14 @@ def recall_at_k(predictions_dict, k=5, threshold=3.5):
 
 
 def coverage(recommended_items, all_items):
-    """Coverage: نسبت آیتم‌های توصیه شده به کل آیتم‌ها"""
+    """Coverage: ratio of recommended items to all items"""
     return len(set(recommended_items)) / len(set(all_items))
 
 
 def evaluate_model_with_cross_validation(collab_model, df_ratings, df_movies,
                                          k_values=[5, 10], threshold=3.5, folds=3):
     """
-    ارزیابی با cross-validation ساده
+    Evaluation with simple cross-validation.
     """
     users = df_ratings['user_id'].unique()
     if len(users) > 500:
@@ -138,9 +134,8 @@ def evaluate_model_with_cross_validation(collab_model, df_ratings, df_movies,
         model.build_model(train_df, factors=50, iterations=20)
 
         predictions_dict = {}
-        all_test_ratings = {}  # user_id -> {movie_id: actual_rating}
+        all_test_ratings = {}
         for user_id in test_users:
-            # ذخیره همه ریتینگ‌های تست کاربر
             user_test = test_df[test_df['user_id'] == user_id]
             all_test_ratings[user_id] = dict(zip(user_test['movie_id'], user_test['rating']))
 
@@ -172,8 +167,8 @@ def evaluate_model_with_cross_validation(collab_model, df_ratings, df_movies,
 def evaluate_model(collab_model, df_ratings, df_movies, k_values=[5, 10], threshold=3.5,
                    item_similarity_matrix=None, item_popularity=None):
     """
-    ارزیابی ساده (بدون cross-validation)
-    با محاسبه NDCG، Novelty، Diversity (در صورت ارائه ماتریس تشابه)
+    Simple evaluation (without cross-validation)
+    Computes NDCG, Novelty, Diversity (if similarity matrix is provided).
     """
     all_users = df_ratings['user_id'].unique()
     if len(all_users) > 100:
@@ -182,17 +177,16 @@ def evaluate_model(collab_model, df_ratings, df_movies, k_values=[5, 10], thresh
     predictions_dict = {}
     all_recommended_movies = []
     all_recommended_ids = []
-    all_test_ratings = {}  # ذخیره تمام ریتینگ‌های تست واقعی برای هر کاربر
+    all_test_ratings = {}
 
     for user_id in all_users:
         recs = collab_model.recommend_for_user(user_id, df_ratings, df_movies, n=max(k_values))
         pred_titles = [r['title'] for r in recs]
         all_recommended_movies.extend(pred_titles)
 
-        # جمع‌آوری ریتینگ‌های واقعی کاربر از کل دیتافریم (برای NDCG و غیره)
         user_ratings = df_ratings[df_ratings['user_id'] == user_id]
         actual_dict = dict(zip(user_ratings['movie_id'], user_ratings['rating']))
-        all_test_ratings[user_id] = actual_dict  # ذخیره می‌کنیم
+        all_test_ratings[user_id] = actual_dict
 
         user_preds = []
         for r in recs:
@@ -210,16 +204,13 @@ def evaluate_model(collab_model, df_ratings, df_movies, k_values=[5, 10], thresh
         results[f'Recall@{k}'] = recall_at_k(predictions_dict, k, threshold)
         results[f'NDCG@{k}'] = ndcg_at_k(predictions_dict, all_test_ratings, k, threshold)
 
-    # Coverage
     all_items = df_movies['title'].unique()
     results['Coverage'] = coverage(all_recommended_movies, all_items)
 
-    # Novelty
     if item_popularity is None:
         item_popularity = df_ratings.groupby('movie_id')['rating'].count().to_dict()
     results['Novelty@5'] = novelty_at_k(predictions_dict, item_popularity, k=5)
 
-    # Diversity
     if item_similarity_matrix is not None:
         results['Diversity@5'] = diversity_at_k(predictions_dict, item_similarity_matrix, k=5)
     else:

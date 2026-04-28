@@ -1,4 +1,3 @@
-# src/collaborative.py
 import numpy as np
 import pandas as pd
 from implicit.als import AlternatingLeastSquares
@@ -9,9 +8,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 class CollaborativeRecommender:
+    """
+    Collaborative filtering recommender using ALS (Alternating Least Squares)
+    with confidence weighting and cold-start handling.
+    """
+
     def __init__(self, alpha=2.0, use_gpu=False):
         """
-        alpha: confidence parameter (confidence = 1 + alpha * rating)
+        Parameters
+        ----------
+        alpha : float
+            Confidence parameter: confidence = 1 + alpha * rating
+        use_gpu : bool
+            Whether to use GPU for ALS training.
         """
         self.alpha = alpha
         self.use_gpu = use_gpu
@@ -27,7 +36,6 @@ class CollaborativeRecommender:
         """Convert ratings to confidence weights"""
         rows = df_ratings['user_id'].map(self.user_map).values
         cols = df_ratings['movie_id'].map(self.item_map).values
-        # Confidence: 1 + alpha * rating (rating between 1-5)
         data = (1.0 + self.alpha * df_ratings['rating'].values).astype(np.float32)
         return csr_matrix((data, (rows, cols)))
 
@@ -43,16 +51,13 @@ class CollaborativeRecommender:
 
     def build_model(self, df_ratings, factors=100, iterations=30, regularization=0.05):
         """Build ALS model with confidence weights"""
-        # Mappings
         self.user_map = {uid: i for i, uid in enumerate(df_ratings['user_id'].unique())}
         self.item_map = {mid: i for i, mid in enumerate(df_ratings['movie_id'].unique())}
         self.user_reverse = {i: uid for uid, i in self.user_map.items()}
         self.item_reverse = {i: mid for mid, i in self.item_map.items()}
 
-        # Confidence matrix
         self.sparse_matrix = self._build_confidence_matrix(df_ratings)
 
-        # ALS model
         self.model = AlternatingLeastSquares(
             factors=factors,
             iterations=iterations,
@@ -62,7 +67,6 @@ class CollaborativeRecommender:
         )
         self.model.fit(self.sparse_matrix)
 
-        # Cache popular items for cold-start
         self._cache_popular_items(df_ratings)
 
         logger.info(f"ALS model built: factors={factors}, iter={iterations}, reg={regularization}, alpha={self.alpha}")
@@ -71,7 +75,6 @@ class CollaborativeRecommender:
     def recommend_for_user(self, user_id, df_ratings, df_movies, n=5):
         """Recommend movies to a specific user (handles cold-start)"""
         if user_id not in self.user_map:
-            # Cold-start: return popular movies
             top_movies = self._popular_cache.head(n).index
             recommendations = []
             for mid in top_movies:
@@ -95,15 +98,26 @@ class CollaborativeRecommender:
 
     def recommend_similar_movies(self, movie_id, df_movies, n=5):
         """
-        پیدا کردن فیلم‌های مشابه بر اساس embedding آیتم‌ها (بدون نیاز به کاربر)
-        ورودی: movie_id
-        خروجی: لیستی از فیلم‌های مشابه با نمره شباهت
+        Find similar movies based on item embeddings (without needing a user).
+
+        Parameters
+        ----------
+        movie_id : int
+            Target movie ID.
+        df_movies : pandas.DataFrame
+            Movie metadata.
+        n : int
+            Number of similar movies to return.
+
+        Returns
+        -------
+        list of dict
+            Each dict contains 'movie_id', 'title', and 'similarity_score'.
         """
         if self.model is None:
             raise RuntimeError("Model not built. Call build_model first.")
 
         if movie_id not in self.item_map:
-            # اگر فیلم ناشناس باشد، محبوب‌ترین‌ها را برگردان
             logger.warning(f"Movie {movie_id} not in training set. Returning popular movies.")
             top_movies = self._popular_cache.head(n).index
             recommendations = []
@@ -113,12 +127,11 @@ class CollaborativeRecommender:
             return recommendations
 
         item_idx = self.item_map[movie_id]
-        # دریافت n+1 آیتم مشابه (چون خود فیلم هم جزو نتایج است)
         similar_ids, scores = self.model.similar_items(item_idx, N=n+1)
         recommendations = []
         for idx, score in zip(similar_ids, scores):
             if idx == item_idx:
-                continue  # حذف خود فیلم
+                continue
             mid = self.item_reverse[idx]
             title = df_movies[df_movies['movie_id'] == mid]['title'].iloc[0]
             recommendations.append({
@@ -131,8 +144,10 @@ class CollaborativeRecommender:
         return recommendations
 
     def save(self, path='models/collaborative_model.pkl'):
+        """Save model to disk using joblib."""
         joblib.dump(self, path)
 
     @staticmethod
     def load(path='models/collaborative_model.pkl'):
+        """Load model from disk using joblib."""
         return joblib.load(path)

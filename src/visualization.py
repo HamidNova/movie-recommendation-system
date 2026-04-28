@@ -6,23 +6,20 @@ import numpy as np
 import os
 from typing import Optional
 
-# تنظیم استایل
 sns.set_style("whitegrid")
 plt.rcParams['figure.figsize'] = (12, 6)
 plt.rcParams['font.size'] = 12
 
 
 def plot_eda(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, save_dir='reports/figures'):
-    """۵ نمودار EDA حرفه‌ای"""
+    """Generate 5 exploratory data analysis plots."""
     os.makedirs(save_dir, exist_ok=True)
 
-    # 1. توزیع ریتینگ‌ها
     plt.figure()
     ax = sns.countplot(x='rating', data=df_ratings, palette='viridis')
     plt.title('Distribution of User Ratings', fontsize=14, fontweight='bold')
     plt.xlabel('Rating')
     plt.ylabel('Count')
-    # اضافه کردن عدد روی میله‌ها
     for p in ax.patches:
         ax.annotate(f'{int(p.get_height())}', (p.get_x() + p.get_width() / 2., p.get_height()),
                     ha='center', va='bottom')
@@ -30,7 +27,6 @@ def plot_eda(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, save_dir='report
     plt.savefig(os.path.join(save_dir, 'rating_distribution.png'), dpi=150)
     plt.close()
 
-    # 2. تعداد ریتینگ به ازای کاربر
     user_ratings = df_ratings.groupby('user_id')['rating'].count()
     plt.figure()
     plt.hist(user_ratings, bins=50, edgecolor='black', alpha=0.7)
@@ -43,7 +39,6 @@ def plot_eda(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, save_dir='report
     plt.savefig(os.path.join(save_dir, 'ratings_per_user.png'), dpi=150)
     plt.close()
 
-    # 3. ۱۰ فیلم پرمخاطب
     top_movies = df_ratings.groupby('movie_id')['rating'].count().sort_values(ascending=False).head(10)
     top_movies_names = df_movies.set_index('movie_id').loc[top_movies.index]['title']
     plt.figure()
@@ -55,7 +50,6 @@ def plot_eda(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, save_dir='report
     plt.savefig(os.path.join(save_dir, 'popular_movies.png'), dpi=150)
     plt.close()
 
-    # 4. توزیع میانگین ریتینگ فیلم‌ها
     avg_ratings = df_ratings.groupby('movie_id')['rating'].mean()
     plt.figure()
     plt.hist(avg_ratings, bins=20, edgecolor='black', alpha=0.7, color='coral')
@@ -68,7 +62,6 @@ def plot_eda(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, save_dir='report
     plt.savefig(os.path.join(save_dir, 'avg_rating_dist.png'), dpi=150)
     plt.close()
 
-    # 5. هیت مپ نمونه (۲۰ کاربر و ۲۰ فیلم تصادفی)
     sample_users = np.random.choice(df_ratings['user_id'].unique(), min(20, df_ratings['user_id'].nunique()),
                                     replace=False)
     sample_movies = np.random.choice(df_ratings['movie_id'].unique(), min(20, df_ratings['movie_id'].nunique()),
@@ -83,12 +76,12 @@ def plot_eda(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, save_dir='report
         plt.savefig(os.path.join(save_dir, 'heatmap_sample.png'), dpi=150)
         plt.close()
 
-    print(f"✅ 5 EDA plots saved in {save_dir}")
+    print(f"5 EDA plots saved in {save_dir}")
 
 
 def plot_comparison(results_dict: dict, metric_names: list, save_dir='reports/figures'):
     """
-    مقایسه چند مدل (مثلاً collaborative, content, hybrid) روی معیارهای مختلف
+    Compare multiple models on selected metrics.
     results_dict: {'model_name': {'Precision@5': 0.4, 'Recall@5': 0.3, ...}}
     """
     os.makedirs(save_dir, exist_ok=True)
@@ -104,4 +97,4 @@ def plot_comparison(results_dict: dict, metric_names: list, save_dir='reports/fi
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'model_comparison.png'), dpi=150)
     plt.close()
-    print(f"✅ Comparison plot saved in {save_dir}")
+    print(f"Comparison plot saved in {save_dir}")
