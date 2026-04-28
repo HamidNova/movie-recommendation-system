@@ -16,7 +16,8 @@ models/
 logs/
 
 # Temporary pictures
-pictures/
+pictures/*
+!pictures/screenshot_streamlit.png
 
 # IDE
 .idea/
