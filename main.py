@@ -1,8 +1,6 @@
-# main.py
 import os
 import sys
 
-# مسیر پروژه (ریشه) را به path اضافه می‌کنیم تا importها کار کنند
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.data_loader import load_movielens, get_genre_matrix
@@ -21,14 +19,11 @@ from sklearn.model_selection import train_test_split
 def main():
     logger.info("===== Starting Advanced Movie Recommender System =====")
 
-    # 1. Load data (with genres)
     df_ratings, df_movies = load_movielens()
     logger.info(f"Data loaded: {df_ratings.shape[0]} ratings, {df_movies.shape[0]} movies")
 
-    # 2. EDA plots
     plot_eda(df_ratings, df_movies)
 
-    # 3. Train/Test split (based on users to avoid data leakage)
     unique_users = df_ratings['user_id'].unique()
     train_users, test_users = train_test_split(unique_users, test_size=0.2, random_state=42)
     train_df = df_ratings[df_ratings['user_id'].isin(train_users)]
@@ -37,7 +32,6 @@ def main():
     logger.info(f"Train set: {len(train_df)} ratings from {len(train_users)} users")
     logger.info(f"Test set:  {len(test_df)} ratings from {len(test_users)} users")
 
-    # 4. Build collaborative model (ALS with confidence) on TRAINING data
     logger.info("Building collaborative model on training data...")
     collab_model = CollaborativeRecommender(alpha=2.0)
     collab_model.build_model(
@@ -48,13 +42,11 @@ def main():
     )
     save_model(collab_model, 'collaborative')
 
-    # 5. Build content-based model on ALL movies (metadata only, no rating leakage)
     logger.info("Building content-based model (metadata)...")
     content_model = ContentBasedRecommender(df_movies)
     content_model.build_model(use_title=True, title_weight=0.2)
     save_model(content_model, 'content_based')
 
-    # 6. Compute item similarity matrix for diversity (from content model)
     genre_sim_matrix = {}
     if hasattr(content_model, 'combined_similarity'):
         sim_matrix = content_model.combined_similarity
@@ -65,11 +57,10 @@ def main():
                 mid2 = other['movie_id']
                 genre_sim_matrix[mid1][mid2] = sim_matrix[i, j]
 
-    # 7. Evaluate collaborative model on TEST data
     logger.info("Evaluating collaborative model on test data...")
-    item_pop = get_popularity_dict(train_df)   # popularity from train set
+    item_pop = get_popularity_dict(train_df)
     results_collab, _ = evaluate_model(
-        collab_model, test_df, df_movies,      # <-- use test_df here
+        collab_model, test_df, df_movies,
         k_values=[5, 10],
         threshold=3.5,
         item_similarity_matrix=genre_sim_matrix,
@@ -80,7 +71,12 @@ def main():
         logger.info(f"  {metric}: {val:.4f}")
         print(f"  {metric}: {val:.4f}")
 
-    # 8. (Optional) Cross-validation on train data
+    # Generate model comparison plot
+    comparison_dict = {
+        'Collaborative': results_collab
+    }
+    plot_comparison(comparison_dict, metric_names=['Precision@5', 'Recall@5', 'NDCG@5'])
+
     if len(train_users) > 200:
         logger.info("Running cross-validation (3 folds on 500 users)...")
         cv_results = evaluate_model_with_cross_validation(
@@ -88,22 +84,19 @@ def main():
         )
         logger.info(f"CV results: {cv_results}")
 
-    # 9. Hybrid and demo recommendations (using full training model is fine for demo)
     hybrid = HybridRecommender(content_model, collab_model, train_df, df_movies)
 
-    # Test: similar movies to Toy Story (movie_id=1)
     logger.info("Testing similar-movies (Toy Story - movie_id=1)")
     similar = hybrid.recommend_similar_movies(movie_id=1, n=5, content_weight=0.6)
-    print("\n🎬 Movies similar to 'Toy Story' (Hybrid, content_weight=0.6):")
+    print("\nMovies similar to 'Toy Story' (Hybrid, content_weight=0.6):")
     for i, m in enumerate(similar, 1):
         print(f"  {i}. {m['title']} (conf:{m['confidence']}, reasons:{', '.join(m['reasons'])})")
 
-    # Test: recommend for a specific user
     test_user = 1
     if test_user in train_users:
         logger.info(f"Testing recommendations for user {test_user}")
         user_recs = hybrid.recommend(user_id=test_user, liked_movie_title="Toy Story", n=5, content_weight=0.4)
-        print(f"\n🔥 Personalized recommendations for user {test_user}:")
+        print(f"\nPersonalized recommendations for user {test_user}:")
         for i, r in enumerate(user_recs, 1):
             print(f"  {i}. {r['title']} (conf:{r['confidence']})")
     else:
