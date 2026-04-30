@@ -179,7 +179,7 @@ Models also support a 3‑fold cross‑validation mode for sensitivity analysis.
 ![Distribution of Average Ratings per Movie](reports/figures/avg_rating_dist.png)
 ![Sample Ratings Heatmap](reports/figures/heatmap_sample.png)
 ![Model Comparison](reports/figures/model_comparison.png)
-![Streamlit App](pictures/screenshot_streamlit.png)
+![Streamlit Application](pictures/screenshot_streamlit.png)
 
 ---
 
