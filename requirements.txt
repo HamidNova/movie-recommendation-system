@@ -8,3 +8,6 @@ joblib
 tqdm
 implicit
 scipy
+torch
+scikit-fuzzy
+requests
