@@ -217,3 +217,45 @@ def evaluate_model(collab_model, df_ratings, df_movies, k_values=[5, 10], thresh
         results['Diversity@5'] = 0.0
 
     return results, predictions_dict
+
+
+def evaluate_baseline(baseline_model, df_ratings_test, df_movies,
+                      k_values=[5, 10], threshold=3.5, item_popularity=None):
+    """
+    Evaluate a baseline model (Popular or Random) using the same protocol.
+    """
+    all_users = df_ratings_test['user_id'].unique()
+    predictions_dict = {}
+    all_recommended = []
+    all_test_ratings = {}
+
+    for user_id in all_users:
+        recs = baseline_model.recommend(user_id, df_movies, n=max(k_values))
+        pred_titles = [rec['title'] for rec in recs]
+        all_recommended.extend(pred_titles)
+
+        user_test = df_ratings_test[df_ratings_test['user_id'] == user_id]
+        actual_dict = dict(zip(user_test['movie_id'], user_test['rating']))
+        all_test_ratings[user_id] = actual_dict
+
+        user_preds = []
+        for rec in recs:
+            mid = rec['movie_id']
+            actual = actual_dict.get(mid, 0)
+            user_preds.append((mid, rec['predicted_rating'], actual))
+        predictions_dict[user_id] = user_preds
+
+    results = {}
+    for k in k_values:
+        results[f'Precision@{k}'] = precision_at_k(predictions_dict, k, threshold)
+        results[f'Recall@{k}'] = recall_at_k(predictions_dict, k, threshold)
+        results[f'NDCG@{k}'] = ndcg_at_k(predictions_dict, all_test_ratings, k, threshold)
+
+    results['Coverage'] = coverage(all_recommended, df_movies['title'].unique())
+
+    if item_popularity is None:
+        item_popularity = df_ratings_test.groupby('movie_id')['rating'].count().to_dict()
+    results['Novelty@5'] = novelty_at_k(predictions_dict, item_popularity, k=5)
+    results['Diversity@5'] = 0.0  # no similarity matrix for baselines
+
+    return results, predictions_dict
