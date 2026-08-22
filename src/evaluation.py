@@ -1,18 +1,12 @@
 import numpy as np
 import pandas as pd
 from collections import defaultdict
-from sklearn.model_selection import train_test_split
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 def ndcg_at_k(predictions_dict, user_all_test_ratings, k=5, threshold=3.5):
-    """
-    NDCG@k (Normalized Discounted Cumulative Gain)
-    predictions_dict: {user_id: [(movie_id, predicted_score, actual_rating), ...]}
-    user_all_test_ratings: {user_id: {movie_id: actual_rating}}
-    """
     ndcg_scores = []
     for user_id, user_preds in predictions_dict.items():
         top_k = sorted(user_preds, key=lambda x: x[1], reverse=True)[:k]
@@ -27,31 +21,27 @@ def ndcg_at_k(predictions_dict, user_all_test_ratings, k=5, threshold=3.5):
 
         ndcg = dcg / idcg if idcg > 0 else 0.0
         ndcg_scores.append(ndcg)
-    return np.mean(ndcg_scores) if ndcg_scores else 0.0
+    return float(np.mean(ndcg_scores)) if ndcg_scores else 0.0
 
 
 def novelty_at_k(predictions_dict, item_popularity, k=5):
-    """
-    Novelty@k: mean log inverse popularity of recommended items.
-    item_popularity: dict {movie_id: number of ratings}
-    """
     novelty_scores = []
     total_pop = sum(item_popularity.values())
+    if total_pop == 0:
+        return 0.0
     for user_id, user_preds in predictions_dict.items():
         top_k = sorted(user_preds, key=lambda x: x[1], reverse=True)[:k]
+        if not top_k:
+            continue
         novelty = 0.0
         for movie_id, _, _ in top_k:
             pop = item_popularity.get(movie_id, 1)
             novelty += -np.log2(pop / total_pop)
-        novelty_scores.append(novelty / k if k > 0 else 0)
-    return np.mean(novelty_scores) if novelty_scores else 0.0
+        novelty_scores.append(novelty / len(top_k))
+    return float(np.mean(novelty_scores)) if novelty_scores else 0.0
 
 
 def diversity_at_k(predictions_dict, item_similarity_matrix, k=5):
-    """
-    Diversity@k: 1 - average similarity among recommended items.
-    item_similarity_matrix: dict {movie_id: {movie_id: similarity}}
-    """
     if item_similarity_matrix is None:
         return 0.0
     diversity_scores = []
@@ -63,51 +53,61 @@ def diversity_at_k(predictions_dict, item_similarity_matrix, k=5):
         total_sim = 0.0
         count = 0
         for i in range(len(top_k_items)):
-            for j in range(i+1, len(top_k_items)):
+            for j in range(i + 1, len(top_k_items)):
                 sim = 0.0
-                if (top_k_items[i] in item_similarity_matrix
-                        and top_k_items[j] in item_similarity_matrix[top_k_items[i]]):
-                    sim = item_similarity_matrix[top_k_items[i]][top_k_items[j]]
+                m1, m2 = top_k_items[i], top_k_items[j]
+                if m1 in item_similarity_matrix and m2 in item_similarity_matrix[m1]:
+                    sim = item_similarity_matrix[m1][m2]
+                elif m2 in item_similarity_matrix and m1 in item_similarity_matrix[m2]:
+                    sim = item_similarity_matrix[m2][m1]
                 total_sim += sim
                 count += 1
-        avg_sim = total_sim / count if count > 0 else 0
-        diversity_scores.append(1 - avg_sim)
-    return np.mean(diversity_scores) if diversity_scores else 0.0
+        avg_sim = total_sim / count if count > 0 else 0.0
+        diversity_scores.append(1.0 - avg_sim)
+    return float(np.mean(diversity_scores)) if diversity_scores else 0.0
 
 
 def precision_at_k(predictions_dict, k=5, threshold=3.5):
-    """Precision@k"""
     precisions = []
     for user_id, user_preds in predictions_dict.items():
         top_k = sorted(user_preds, key=lambda x: x[1], reverse=True)[:k]
+        if not top_k:
+            continue
         relevant = sum(1 for _, _, actual in top_k if actual >= threshold)
         precisions.append(relevant / k)
-    return np.mean(precisions) if precisions else 0.0
+    return float(np.mean(precisions)) if precisions else 0.0
 
 
-def recall_at_k(predictions_dict, k=5, threshold=3.5):
-    """Recall@k"""
+def recall_at_k(predictions_dict, all_test_ratings, k=5, threshold=3.5):
     recalls = []
     for user_id, user_preds in predictions_dict.items():
-        total_relevant = sum(1 for _, _, actual in user_preds if actual >= threshold)
+        test_ratings = all_test_ratings.get(user_id, {})
+        total_relevant = sum(1 for r in test_ratings.values() if r >= threshold)
         if total_relevant == 0:
             continue
         top_k = sorted(user_preds, key=lambda x: x[1], reverse=True)[:k]
         relevant_in_top_k = sum(1 for _, _, actual in top_k if actual >= threshold)
         recalls.append(relevant_in_top_k / total_relevant)
-    return np.mean(recalls) if recalls else 0.0
+    return float(np.mean(recalls)) if recalls else 0.0
 
 
 def coverage(recommended_items, all_items):
-    """Coverage: ratio of recommended items to all items"""
-    return len(set(recommended_items)) / len(set(all_items))
+    if not all_items:
+        return 0.0
+    return float(len(set(recommended_items)) / len(set(all_items)))
+
+def _extract_movie_id(rec, df_movies):
+    if 'movie_id' in rec:
+        return rec['movie_id']
+    if 'title' in rec:
+        movie_row = df_movies[df_movies['title'] == rec['title']]
+        if not movie_row.empty:
+            return movie_row['movie_id'].iloc[0]
+    return None
 
 
 def evaluate_model_with_cross_validation(collab_model, df_ratings, df_movies,
                                          k_values=[5, 10], threshold=3.5, folds=3):
-    """
-    Evaluation with simple cross-validation.
-    """
     users = df_ratings['user_id'].unique()
     if len(users) > 500:
         users = np.random.choice(users, 500, replace=False)
@@ -117,21 +117,31 @@ def evaluate_model_with_cross_validation(collab_model, df_ratings, df_movies,
 
     unique_users = df_sample['user_id'].unique()
     np.random.shuffle(unique_users)
-    fold_size = len(unique_users) // folds
-    user_folds = [unique_users[i*fold_size:(i+1)*fold_size] for i in range(folds)]
+
+    fold_size = max(1, len(unique_users) // folds)
+    user_folds = [unique_users[i * fold_size:(i + 1) * fold_size] for i in range(folds)]
 
     results_over_folds = {f'Precision@{k}': [] for k in k_values}
     results_over_folds.update({f'Recall@{k}': [] for k in k_values})
     results_over_folds.update({f'NDCG@{k}': [] for k in k_values})
 
     for fold_idx, test_users in enumerate(user_folds):
+        if len(test_users) == 0:
+            continue
         train_df = df_sample[~df_sample['user_id'].isin(test_users)]
         test_df = df_sample[df_sample['user_id'].isin(test_users)]
         if train_df.empty or test_df.empty:
             continue
 
-        model = collab_model.__class__(alpha=getattr(collab_model, 'alpha', 2.0))
-        model.build_model(train_df, factors=50, iterations=20)
+        try:
+            model = collab_model.__class__(alpha=getattr(collab_model, 'alpha', 2.0))
+        except Exception:
+            model = collab_model
+
+        if hasattr(model, 'build_model'):
+            model.build_model(train_df, factors=50, iterations=20)
+        elif hasattr(model, 'fit'):
+            model.fit(train_df)
 
         predictions_dict = {}
         all_test_ratings = {}
@@ -139,14 +149,18 @@ def evaluate_model_with_cross_validation(collab_model, df_ratings, df_movies,
             user_test = test_df[test_df['user_id'] == user_id]
             all_test_ratings[user_id] = dict(zip(user_test['movie_id'], user_test['rating']))
 
-            recs = model.recommend_for_user(user_id, train_df, df_movies, n=max(k_values))
+            if hasattr(model, 'recommend_for_user'):
+                recs = model.recommend_for_user(user_id, train_df, df_movies, n=max(k_values))
+            elif hasattr(model, 'recommend'):
+                recs = model.recommend(user_id, df_movies, n=max(k_values))
+            else:
+                recs = []
+
             user_preds = []
             for rec in recs:
-                title = rec['title']
-                movie_row = df_movies[df_movies['title'] == title]
-                if movie_row.empty:
+                movie_id = _extract_movie_id(rec, df_movies)
+                if movie_id is None:
                     continue
-                movie_id = movie_row['movie_id'].iloc[0]
                 actual = all_test_ratings[user_id].get(movie_id, 0)
                 user_preds.append((movie_id, rec['predicted_rating'], actual))
             predictions_dict[user_id] = user_preds
@@ -160,28 +174,30 @@ def evaluate_model_with_cross_validation(collab_model, df_ratings, df_movies,
 
     final_results = {}
     for metric in results_over_folds:
-        final_results[metric] = np.mean(results_over_folds[metric])
+        vals = results_over_folds[metric]
+        final_results[metric] = float(np.mean(vals)) if vals else 0.0
     return final_results
 
 
 def evaluate_model(collab_model, df_ratings, df_movies, k_values=[5, 10], threshold=3.5,
                    item_similarity_matrix=None, item_popularity=None):
-    """
-    Simple evaluation (without cross-validation)
-    Computes NDCG, Novelty, Diversity (if similarity matrix is provided).
-    """
     all_users = df_ratings['user_id'].unique()
     if len(all_users) > 100:
         all_users = np.random.choice(all_users, 100, replace=False)
 
     predictions_dict = {}
     all_recommended_movies = []
-    all_recommended_ids = []
     all_test_ratings = {}
 
     for user_id in all_users:
-        recs = collab_model.recommend_for_user(user_id, df_ratings, df_movies, n=max(k_values))
-        pred_titles = [r['title'] for r in recs]
+        if hasattr(collab_model, 'recommend_for_user'):
+            recs = collab_model.recommend_for_user(user_id, df_ratings, df_movies, n=max(k_values))
+        elif hasattr(collab_model, 'recommend'):
+            recs = collab_model.recommend(user_id, df_movies, n=max(k_values))
+        else:
+            recs = []
+
+        pred_titles = [r['title'] for r in recs if 'title' in r]
         all_recommended_movies.extend(pred_titles)
 
         user_ratings = df_ratings[df_ratings['user_id'] == user_id]
@@ -190,10 +206,9 @@ def evaluate_model(collab_model, df_ratings, df_movies, k_values=[5, 10], thresh
 
         user_preds = []
         for r in recs:
-            movie_row = df_movies[df_movies['title'] == r['title']]
-            if movie_row.empty:
+            movie_id = _extract_movie_id(r, df_movies)
+            if movie_id is None:
                 continue
-            movie_id = movie_row['movie_id'].iloc[0]
             actual = actual_dict.get(movie_id, 0)
             user_preds.append((movie_id, r['predicted_rating'], actual))
         predictions_dict[user_id] = user_preds
@@ -201,7 +216,7 @@ def evaluate_model(collab_model, df_ratings, df_movies, k_values=[5, 10], thresh
     results = {}
     for k in k_values:
         results[f'Precision@{k}'] = precision_at_k(predictions_dict, k, threshold)
-        results[f'Recall@{k}'] = recall_at_k(predictions_dict, k, threshold)
+        results[f'Recall@{k}'] = recall_at_k(predictions_dict, all_test_ratings, k, threshold)
         results[f'NDCG@{k}'] = ndcg_at_k(predictions_dict, all_test_ratings, k, threshold)
 
     all_items = df_movies['title'].unique()
@@ -221,17 +236,20 @@ def evaluate_model(collab_model, df_ratings, df_movies, k_values=[5, 10], thresh
 
 def evaluate_baseline(baseline_model, df_ratings_test, df_movies,
                       k_values=[5, 10], threshold=3.5, item_popularity=None):
-    """
-    Evaluate a baseline model (Popular or Random) using the same protocol.
-    """
     all_users = df_ratings_test['user_id'].unique()
     predictions_dict = {}
     all_recommended = []
     all_test_ratings = {}
 
     for user_id in all_users:
-        recs = baseline_model.recommend(user_id, df_movies, n=max(k_values))
-        pred_titles = [rec['title'] for rec in recs]
+        if hasattr(baseline_model, 'recommend'):
+            recs = baseline_model.recommend(user_id, df_movies, n=max(k_values))
+        elif hasattr(baseline_model, 'recommend_for_user'):
+            recs = baseline_model.recommend_for_user(user_id, df_ratings_test, df_movies, n=max(k_values))
+        else:
+            recs = []
+
+        pred_titles = [rec['title'] for rec in recs if 'title' in rec]
         all_recommended.extend(pred_titles)
 
         user_test = df_ratings_test[df_ratings_test['user_id'] == user_id]
@@ -240,7 +258,9 @@ def evaluate_baseline(baseline_model, df_ratings_test, df_movies,
 
         user_preds = []
         for rec in recs:
-            mid = rec['movie_id']
+            mid = _extract_movie_id(rec, df_movies)
+            if mid is None:
+                continue
             actual = actual_dict.get(mid, 0)
             user_preds.append((mid, rec['predicted_rating'], actual))
         predictions_dict[user_id] = user_preds
@@ -248,7 +268,7 @@ def evaluate_baseline(baseline_model, df_ratings_test, df_movies,
     results = {}
     for k in k_values:
         results[f'Precision@{k}'] = precision_at_k(predictions_dict, k, threshold)
-        results[f'Recall@{k}'] = recall_at_k(predictions_dict, k, threshold)
+        results[f'Recall@{k}'] = recall_at_k(predictions_dict, all_test_ratings, k, threshold)
         results[f'NDCG@{k}'] = ndcg_at_k(predictions_dict, all_test_ratings, k, threshold)
 
     results['Coverage'] = coverage(all_recommended, df_movies['title'].unique())
@@ -256,6 +276,6 @@ def evaluate_baseline(baseline_model, df_ratings_test, df_movies,
     if item_popularity is None:
         item_popularity = df_ratings_test.groupby('movie_id')['rating'].count().to_dict()
     results['Novelty@5'] = novelty_at_k(predictions_dict, item_popularity, k=5)
-    results['Diversity@5'] = 0.0  # no similarity matrix for baselines
+    results['Diversity@5'] = 0.0
 
     return results, predictions_dict

@@ -1,10 +1,11 @@
-# src/visualization.py
+import os
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
-import os
-from typing import Optional
+
 
 sns.set_style("whitegrid")
 plt.rcParams['figure.figsize'] = (12, 6)
@@ -12,35 +13,42 @@ plt.rcParams['font.size'] = 12
 
 
 def plot_eda(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, save_dir='reports/figures'):
-    """Generate 5 exploratory data analysis plots."""
+    if df_ratings.empty or df_movies.empty:
+        return
+
     os.makedirs(save_dir, exist_ok=True)
 
     plt.figure()
-    ax = sns.countplot(x='rating', data=df_ratings, palette='viridis')
+    ax = sns.countplot(x='rating', hue='rating', data=df_ratings, palette='viridis', legend=False)
     plt.title('Distribution of User Ratings', fontsize=14, fontweight='bold')
     plt.xlabel('Rating')
     plt.ylabel('Count')
     for p in ax.patches:
-        ax.annotate(f'{int(p.get_height())}', (p.get_x() + p.get_width() / 2., p.get_height()),
-                    ha='center', va='bottom')
+        h = p.get_height()
+        if h > 0:
+            ax.annotate(f'{int(h)}', (p.get_x() + p.get_width() / 2., h),
+                        ha='center', va='bottom')
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'rating_distribution.png'), dpi=150)
     plt.close()
 
     user_ratings = df_ratings.groupby('user_id')['rating'].count()
     plt.figure()
-    plt.hist(user_ratings, bins=50, edgecolor='black', alpha=0.7)
+    plt.hist(user_ratings, bins=min(50, max(1, len(user_ratings))), edgecolor='black', alpha=0.7)
     plt.title('Number of Ratings per User', fontsize=14, fontweight='bold')
     plt.xlabel('Number of Ratings')
     plt.ylabel('Number of Users')
-    plt.axvline(user_ratings.median(), color='red', linestyle='--', label=f'Median: {user_ratings.median():.0f}')
+    med = user_ratings.median() if not user_ratings.empty else 0
+    plt.axvline(med, color='red', linestyle='--', label=f'Median: {med:.0f}')
     plt.legend()
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'ratings_per_user.png'), dpi=150)
     plt.close()
 
     top_movies = df_ratings.groupby('movie_id')['rating'].count().sort_values(ascending=False).head(10)
-    top_movies_names = df_movies.set_index('movie_id').loc[top_movies.index]['title']
+    titles_map = df_movies.drop_duplicates(subset=['movie_id']).set_index('movie_id')['title'].to_dict()
+    top_movies_names = [titles_map.get(mid, f"Movie {mid}") for mid in top_movies.index]
+
     plt.figure()
     plt.barh(top_movies_names, top_movies.values, color='teal')
     plt.xlabel('Number of Ratings')
@@ -52,20 +60,23 @@ def plot_eda(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, save_dir='report
 
     avg_ratings = df_ratings.groupby('movie_id')['rating'].mean()
     plt.figure()
-    plt.hist(avg_ratings, bins=20, edgecolor='black', alpha=0.7, color='coral')
+    plt.hist(avg_ratings, bins=min(20, max(1, len(avg_ratings))), edgecolor='black', alpha=0.7, color='coral')
     plt.title('Distribution of Average Ratings per Movie', fontsize=14, fontweight='bold')
     plt.xlabel('Average Rating')
     plt.ylabel('Number of Movies')
-    plt.axvline(avg_ratings.mean(), color='blue', linestyle='--', label=f'Mean: {avg_ratings.mean():.2f}')
+    avg_mean = avg_ratings.mean() if not avg_ratings.empty else 0
+    plt.axvline(avg_mean, color='blue', linestyle='--', label=f'Mean: {avg_mean:.2f}')
     plt.legend()
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'avg_rating_dist.png'), dpi=150)
     plt.close()
 
-    sample_users = np.random.choice(df_ratings['user_id'].unique(), min(20, df_ratings['user_id'].nunique()),
-                                    replace=False)
-    sample_movies = np.random.choice(df_ratings['movie_id'].unique(), min(20, df_ratings['movie_id'].nunique()),
-                                     replace=False)
+    unique_users = df_ratings['user_id'].unique()
+    unique_movies = df_ratings['movie_id'].unique()
+
+    sample_users = np.random.choice(unique_users, min(20, len(unique_users)), replace=False)
+    sample_movies = np.random.choice(unique_movies, min(20, len(unique_movies)), replace=False)
+
     sample = df_ratings[df_ratings['user_id'].isin(sample_users) & df_ratings['movie_id'].isin(sample_movies)]
     if not sample.empty:
         pivot = sample.pivot_table(index='user_id', columns='movie_id', values='rating')
@@ -80,21 +91,27 @@ def plot_eda(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, save_dir='report
 
 
 def plot_comparison(results_dict: dict, metric_names: list, save_dir='reports/figures'):
-    """
-    Compare multiple models on selected metrics.
-    results_dict: {'model_name': {'Precision@5': 0.4, 'Recall@5': 0.3, ...}}
-    """
+    if not results_dict:
+        return
+
     os.makedirs(save_dir, exist_ok=True)
     df = pd.DataFrame(results_dict).T
-    df = df[metric_names]
+
+    valid_metrics = [m for m in metric_names if m in df.columns]
+    if not valid_metrics:
+        return
+
+    df = df[valid_metrics]
     ax = df.plot(kind='bar', figsize=(10, 6), colormap='viridis')
     plt.title('Model Comparison', fontsize=14, fontweight='bold')
     plt.ylabel('Score')
-    plt.ylim(0, 1)
-    plt.legend(loc='lower right')
+    plt.legend(loc='best')
+
     for container in ax.containers:
         ax.bar_label(container, fmt='%.3f', fontsize=9)
+
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'model_comparison.png'), dpi=150)
     plt.close()
+
     print(f"Comparison plot saved in {save_dir}")
