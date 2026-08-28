@@ -14,7 +14,9 @@ build/
 data/
 models/
 logs/
-assets/posters
+
+# Posters and assets
+assets/posters/
 
 # Temporary pictures
 pictures/*
