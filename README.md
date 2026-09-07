@@ -91,7 +91,6 @@ MovieRecommender/
 ├── ablation_study.py         # Model comparison and fuzzy impact analysis
 ├── download_posters_ddg.py   # Optional poster downloader
 ├── requirements.txt
-├── pytest.ini                # Pytest configuration
 ├── .gitignore
 └── README.md
 ```
@@ -103,7 +102,7 @@ MovieRecommender/
 ### Local
 
 ```bash
-git clone https://github.com/Zero-Day-Hero/MovieRecommender.git
+git clone https://github.com/HamidNova/movie-recommendation-system.git
 cd MovieRecommender
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
@@ -133,12 +132,12 @@ After the container starts, open `http://localhost:8501`.
 
 ## Dataset
 
-The project uses the **MovieLens 100K** dataset.  
+The project uses the **MovieLens 1M** dataset.  
 It contains:
 
-- 100,000 ratings
-- 943 users
-- 1,682 movies
+- 1,000,209 ratings
+- 6,040 users
+- 3,952 movies
 
 Each movie has 19 binary genre features and a title.  
 Ratings are on a scale from 1 to 5.
@@ -250,4 +249,4 @@ MIT License.
 
 **Author:** Hamidreza Mirzaei  
 **Email:** hamidrezamirzaei8363@gmail.com  
-**GitHub:** [github.com/HamidNova](https://github.com/Zero-Day-Hero)
+**GitHub:** [github.com/HamidNova](https://github.com/HamidNova)

@@ -167,7 +167,7 @@ def evaluate_model_with_cross_validation(collab_model, df_ratings, df_movies,
 
         for k in k_values:
             results_over_folds[f'Precision@{k}'].append(precision_at_k(predictions_dict, k, threshold))
-            results_over_folds[f'Recall@{k}'].append(recall_at_k(predictions_dict, k, threshold))
+            results_over_folds[f'Recall@{k}'].append(recall_at_k(predictions_dict, all_test_ratings, k, threshold))
             results_over_folds[f'NDCG@{k}'].append(
                 ndcg_at_k(predictions_dict, all_test_ratings, k, threshold)
             )
