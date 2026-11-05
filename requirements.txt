@@ -11,4 +11,5 @@ scipy
 torch
 scikit-fuzzy
 requests
-DDGS
+ddgs
+Pillow
